@@ -44,13 +44,13 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow">PROCESADOR MULTIPÁGINA AFIP</div>
+    <div class="eyebrow">PARSER AFIP MULTIPÁGINA</div>
     <h1>Lector Automático de Facturas</h1>
   </header>
 
   <label class="drop" id="dropArea">
     <b>Arrastrar PDFs o clic para seleccionar</b>
-    <small>Filtra páginas de recibo y procesa la factura automáticamente.</small>
+    <small>Extrae N° Comprobante, CUIT, Neto, IVAs e IIBB de cualquier proveedor.</small>
     <input type="file" id="fileInput" multiple accept="application/pdf">
   </label>
 
@@ -68,7 +68,7 @@
         <tr>
           <th>Archivo</th>
           <th>N° Comprobante</th>
-          <th>CUIT / Proveedor</th>
+          <th>Proveedor / CUIT</th>
           <th>Neto Gravado</th>
           <th>No Grav. / Exento</th>
           <th>IVA 21%</th>
@@ -150,11 +150,8 @@
       stEl.textContent = 'Leyendo...';
 
       try {
-        const pagesText = await extractTextFromPDF(file);
-        // Seleccionar la página que contiene la Factura (ignora hojas de recibos)
-        let invoiceText = pagesText.find(p => /FACTURA|COMPROBANTE|COD\.\s*001|COD\.\s*006|COD\.\s*011/i.test(p)) || pagesText[pagesText.length - 1] || "";
-        
-        const data = parseInvoiceText(invoiceText, file.name);
+        const fullText = await extractFullTextFromPDF(file);
+        const data = parseInvoiceText(fullText, file.name);
         parsedResults.push(data);
 
         stEl.className = 'status ok';
@@ -170,10 +167,10 @@
     btnExport.disabled = false;
   });
 
-  async function extractTextFromPDF(file) {
+  async function extractFullTextFromPDF(file) {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let pagesText = [];
+    let fullText = "";
 
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
@@ -187,12 +184,10 @@
       });
 
       const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
-      let pageText = "";
-      sortedY.forEach(y => { pageText += linesMap[y].join(" ") + "\n"; });
-      pagesText.push(pageText);
+      sortedY.forEach(y => { fullText += linesMap[y].join(" ") + "\n"; });
     }
 
-    return pagesText;
+    return fullText;
   }
 
   function parseInvoiceText(rawText, fileName) {
@@ -225,39 +220,55 @@
       return 0;
     }
 
-    // 1. NÚMERO DE COMPROBANTE
+    // 1. EXTRAER NÚMERO DE FACTURA (Ignora números de Recibos)
     function extractDocNumber(txt) {
-      const match = txt.match(/(?:P\.V\.|Punto\s+de\s+Venta|Comp\.\s*Nro|N°|Número)\s*[:\.\-]?\s*(\d{4,5})[\s\-]+(\d{8})/i);
-      if (match) return `${match[1].padStart(5, '0')}-${match[2]}`;
-      const simpleMatch = txt.match(/(\d{4,5}\-\d{8})/);
-      return simpleMatch ? simpleMatch[1] : 'S/N';
+      // Buscar formato estándar AFIP: Factura A/B/C seguido de punto de venta (5 dígitos) y número (8 dígitos)
+      const fcMatch = txt.match(/(?:FACTURA|COMPROBANTE|COD\.\s*001|COD\.\s*006|COD\.\s*011)[^\d]*(\d{4,5})[\s\-]+(\d{8})/i);
+      if (fcMatch) return `${fcMatch[1].padStart(5, '0')}-${fcMatch[2]}`;
+
+      const pvMatch = txt.match(/(?:P\.V\.|Punto\s+de\s+Venta)\s*[:\.\-]?\s*(\d{1,5})[^\d]+(?:Comp\.\s*Nro|N°|Número)\s*[:\.\-]?\s*(\d{1,8})/i);
+      if (pvMatch) return `${pvMatch[1].padStart(5, '0')}-${pvMatch[2].padStart(8, '0')}`;
+
+      const genericMatch = txt.match(/(\d{4,5}\-\d{8})/);
+      return genericMatch ? genericMatch[1] : 'S/N';
     }
 
-    // 2. NETO GRAVADO (Evita confundirse con los encabezados de IVA)
-    result.neto = matchAmount([
-      /(?:NETO\s+GRAVADO|IMPORTE\s+NETO\s+GRAVADO|SUBTOTAL\s+GRAVADO|SUBTOTAL\s+NETO)\s*[\$:]?\s*([\d\.,]+)/i,
-      /(?:SUBTOTAL)\s*[\$:]?\s*([\d\.,]+)/i
+    // 2. TOTALES
+    result.total = matchAmount([
+      /(?:IMPORTE\s+TOTAL|TOTAL\s+FACTURA|TOTAL\s+COMPROBANTE)\s*[\$:]?\s*([\d\.,]+)/i,
+      /(?:TOTAL)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 3. DESGLOSE INDEPENDIENTE DE IVA
+    // 3. IVAS POR ALÍCUOTA
     result.iva21 = matchAmount([
-      /(?:IVA\s*21\s*\%|ALICUOTA\s*21\s*\%|IVA\s*21)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:IVA\s*21\s*\%|ALICUOTA\s*21\s*\%|21\s*\%\s*IVA|DEBITO\s+FISCAL\s+21\%)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
     result.iva27 = matchAmount([
-      /(?:IVA\s*27\s*\%|ALICUOTA\s*27\s*\%|IVA\s*27)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:IVA\s*27\s*\%|ALICUOTA\s*27\s*\%|27\s*\%\s*IVA)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
     result.iva10 = matchAmount([
-      /(?:IVA\s*10[\.,]5\s*\%|ALICUOTA\s*10[\.,]5\s*\%|IVA\s*10\.5)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:IVA\s*10[\.,]5\s*\%|ALICUOTA\s*10[\.,]5\s*\%|10[\.,]5\s*\%\s*IVA)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 4. NO GRAVADO / EXENTO
+    // 4. NETO GRAVADO (Busca palabra clave o deduce por cálculo)
+    result.neto = matchAmount([
+      /(?:NETO\s+GRAVADO|IMPORTE\s+NETO\s+GRAVADO|SUBTOTAL\s+GRAVADO|SUBTOTAL\s+NETO)\s*[\$:]?\s*([\d\.,]+)/i,
+      /(?:BASE\s+IMPONIBLE|SUBTOTAL)\s*[\$:]?\s*([\d\.,]+)/i
+    ]);
+
+    // Fallback Neto Gravado: Si no capturó neto pero hay IVA 21%, calcula la base matemática
+    if (result.neto === 0 && result.iva21 > 0) {
+      result.neto = Math.round((result.iva21 / 0.21) * 100) / 100;
+    }
+
+    // 5. NO GRAVADO Y EXENTO
     result.noGravado = matchAmount([
       /(?:CONCEPTOS\s+NO\s+GRAVADOS|NETO\s+NO\s+GRAVADO|NO\s+GRAVADO|OP\.\s*NO\s*GRAVADAS|EXENTO)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 5. PERCEPCIONES Y RETENCIONES
+    // 6. IIBB Y RETENCIONES
     result.iibbCaba = matchAmount([
       /(?:PERC\.\s*IIBB\s*CABA|PERCEPCION\s+IIBB\s+CAPITAL|IIBB\s+CAPITAL|PERC\.\s*AGIP|AGIP\s+CABA)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
@@ -270,12 +281,6 @@
       /(?:OTRAS\s+PERCEPCIONES|PERC\.\s*IVA|IMPUESTOS\s+INTERNOS|OTROS\s+TRIBUTOS)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 6. TOTAL
-    result.total = matchAmount([
-      /(?:IMPORTE\s+TOTAL|TOTAL\s+FACTURA|TOTAL\s+COMPROBANTE)\s*[\$:]?\s*([\d\.,]+)/i,
-      /(?:TOTAL)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
     return result;
   }
 
@@ -285,8 +290,8 @@
 
     const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 3);
     let name = "Proveedor Desconocido";
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
-      if (!/FACTURA|COMPROBANTE|ORIGINAL|DUPLICADO|C\.U\.I\.T|PAGINA|RECIBO/i.test(lines[i])) {
+    for (let i = 0; i < Math.min(lines.length, 12); i++) {
+      if (!/FACTURA|COMPROBANTE|ORIGINAL|DUPLICADO|C\.U\.I\.T|PAGINA|RECIBO|HOJA/i.test(lines[i])) {
         name = lines[i].substring(0, 25);
         break;
       }
