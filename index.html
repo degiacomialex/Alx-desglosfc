@@ -3,102 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lector de Facturas</title>
+<title>Lector de Facturas AFIP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
-  :root{
-    --ink:#EAF3F0;
-    --paper:#0B0F0E;
-    --panel:#121815;
-    --panel2:#161D19;
-    --teal:#22C79A;
-    --teal-dark:#0E2420;
-    --line:#233029;
-    --muted:#7C9088;
-    --amber:#D7A24A;
-    --err:#E07A63;
-  }
-  html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+  :root{--ink:#EAF3F0;--paper:#0B0F0E;--panel:#121815;--panel2:#161D19;--teal:#22C79A;--teal-dark:#0E2420;--line:#233029;--muted:#7C9088;--err:#E07A63;}
   *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background: radial-gradient(ellipse at top left, #0F1D19 0%, var(--paper) 55%);
-    color:var(--ink);
-    font-family:'IBM Plex Sans',sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 60px;}
+  body{margin:0;background:radial-gradient(ellipse at top left, #0F1D19 0%, var(--paper) 55%);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;}
+  .wrap{max-width:1200px;margin:0 auto;padding:28px 18px 60px;}
   header{margin-bottom:22px;}
   .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--teal);margin:0 0 6px;}
   h1{font-size:26px;margin:0 0 8px;font-weight:600;color:#fff;}
-  p.lede{color:var(--muted);margin:0;font-size:14.5px;line-height:1.5;}
-
-  .drop{
-    margin-top:22px;
-    border:1.5px dashed var(--line);
-    border-radius:6px;
-    background:var(--panel);
-    padding:26px 16px;
-    text-align:center;
-    cursor:pointer;
-    transition:border-color .15s, background .15s;
-  }
-  .drop.drag{border-color:var(--teal);background:var(--teal-dark);}
+  .drop{margin-top:22px;border:1.5px dashed var(--line);border-radius:6px;background:var(--panel);padding:26px 16px;text-align:center;cursor:pointer;}
   .drop b{font-weight:600;color:#fff;font-size:15px;}
   .drop small{display:block;margin-top:6px;color:var(--muted);font-size:12.5px;}
   input[type=file]{display:none;}
-
   .filelist{margin-top:18px;display:flex;flex-direction:column;gap:6px;}
-  .frow{
-    display:flex;align-items:center;gap:10px;
-    background:var(--panel);border:1px solid var(--line);border-radius:5px;
-    padding:9px 12px;font-size:13.5px;
-  }
-  .frow .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#cfe3dc;}
-  .status{font-size:12px;font-family:'IBM Plex Mono',monospace;padding:2px 8px;border-radius:20px;flex-shrink:0;}
+  .frow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:9px 12px;}
+  .frow .name{flex:1;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#cfe3dc;}
+  .status{font-size:12px;font-family:'IBM Plex Mono',monospace;padding:2px 8px;border-radius:20px;}
   .status.pend{background:#1B221F;color:var(--muted);}
   .status.busy{background:var(--teal-dark);color:var(--teal);}
   .status.ok{background:#123527;color:#4FE3A6;}
   .status.err{background:#331915;color:var(--err);}
-
   .actions{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;}
-  button{
-    font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;font-weight:500;
-    padding:9px 16px;border-radius:5px;border:1px solid var(--teal);
-    background:var(--teal);color:#08130F;cursor:pointer;
-  }
+  button{font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;font-weight:500;padding:9px 16px;border-radius:5px;border:1px solid var(--teal);background:var(--teal);color:#08130F;cursor:pointer;}
   button.ghost{background:transparent;color:var(--teal);}
   button:disabled{opacity:.4;cursor:not-allowed;}
-
   .table-container{overflow-x:auto;}
-  table{width:100%;border-collapse:collapse;margin-top:24px;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:6px;}
-  thead th{
-    text-align:right;font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:11px;
-    color:var(--muted);padding:9px 10px;border-bottom:1px solid var(--line);background:var(--panel2);
-    white-space:nowrap;
-  }
-  thead th:nth-child(-n+2){text-align:left;}
-  tbody td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#dbe9e3;white-space:nowrap;}
-  tbody td:nth-child(-n+2){text-align:left;font-family:'IBM Plex Sans',sans-serif;}
-  tbody tr:last-child td{border-bottom:none;}
-  
+  table{width:100%;border-collapse:collapse;margin-top:24px;font-size:12.5px;background:var(--panel);border:1px solid var(--line);}
+  thead th{text-align:right;font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:11px;color:var(--muted);padding:9px 10px;border-bottom:1px solid var(--line);background:var(--panel2);white-space:nowrap;}
+  thead th:nth-child(-n+3){text-align:left;}
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;font-family:'IBM Plex Mono',monospace;color:#dbe9e3;white-space:nowrap;}
+  tbody td:nth-child(-n+3){text-align:left;font-family:'IBM Plex Sans',sans-serif;}
   .totalrow td{font-weight:600;border-top:1.5px solid var(--teal);color:#fff;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow">PROCESADOR LOCAL DE FACTURAS</div>
-    <h1>Lector Automático AFIP / Argentina</h1>
-    <p class="lede">Procesa facturas en PDF sin enviar datos a servidores externos ni usar IA. Todo el cálculo de Neto, IVA e IIBB se ejecuta 100% en tu navegador.</p>
+    <div class="eyebrow">PROCESADOR MULTIPÁGINA AFIP</div>
+    <h1>Lector Automático de Facturas</h1>
   </header>
 
   <label class="drop" id="dropArea">
-    <b>Arrastra tus comprobantes PDF aquí o haz clic para seleccionar</b>
-    <small>Soporta facturas A, B, C, Liquidaciones y Notas de Crédito/Débito en formato de texto digital.</small>
+    <b>Arrastrar PDFs o clic para seleccionar</b>
+    <small>Filtra páginas de recibo y procesa la factura automáticamente.</small>
     <input type="file" id="fileInput" multiple accept="application/pdf">
   </label>
 
@@ -115,13 +67,15 @@
       <thead>
         <tr>
           <th>Archivo</th>
-          <th>Proveedor / CUIT</th>
+          <th>N° Comprobante</th>
+          <th>CUIT / Proveedor</th>
           <th>Neto Gravado</th>
           <th>No Grav. / Exento</th>
           <th>IVA 21%</th>
-          <th>IVA 10.5% / Otros</th>
+          <th>IVA 27%</th>
+          <th>IVA 10.5%</th>
           <th>IIBB CABA</th>
-          <th>IIBB PBA / Arba</th>
+          <th>IIBB PBA</th>
           <th>Otros Imp.</th>
           <th>Total</th>
         </tr>
@@ -148,12 +102,9 @@
   let filesToProcess = [];
   let parsedResults = [];
 
-  // Drag and Drop
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eName => {
     dropArea.addEventListener(eName, e => { e.preventDefault(); e.stopPropagation(); });
   });
-  ['dragenter', 'dragover'].forEach(eName => dropArea.classList.add('drag'));
-  ['dragleave', 'drop'].forEach(eName => dropArea.classList.remove('drag'));
 
   dropArea.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
   dropArea.addEventListener('click', () => fileInput.click());
@@ -173,10 +124,7 @@
     filesToProcess.forEach((f, idx) => {
       const row = document.createElement('div');
       row.className = 'frow';
-      row.innerHTML = `
-        <span class="name">${f.name}</span>
-        <span class="status pend" id="st-${idx}">Pendiente</span>
-      `;
+      row.innerHTML = `<span class="name">${f.name}</span><span class="status pend" id="st-${idx}">Pendiente</span>`;
       fileList.appendChild(row);
     });
     btnProcess.disabled = filesToProcess.length === 0;
@@ -202,8 +150,11 @@
       stEl.textContent = 'Leyendo...';
 
       try {
-        const text = await extractTextFromPDF(file);
-        const data = parseInvoiceText(text, file.name);
+        const pagesText = await extractTextFromPDF(file);
+        // Seleccionar la página que contiene la Factura (ignora hojas de recibos)
+        let invoiceText = pagesText.find(p => /FACTURA|COMPROBANTE|COD\.\s*001|COD\.\s*006|COD\.\s*011/i.test(p)) || pagesText[pagesText.length - 1] || "";
+        
+        const data = parseInvoiceText(invoiceText, file.name);
         parsedResults.push(data);
 
         stEl.className = 'status ok';
@@ -219,17 +170,15 @@
     btnExport.disabled = false;
   });
 
-  // Extraer texto ordenado por filas de PDF.js
   async function extractTextFromPDF(file) {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullText = "";
+    let pagesText = [];
 
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
       
-      // Agrupar elementos por posición vertical Y aproximada para armar líneas completas
       const linesMap = {};
       textContent.items.forEach(item => {
         const y = Math.round(item.transform[5]); 
@@ -237,42 +186,38 @@
         linesMap[y].push(item.str);
       });
 
-      // Ordenar las líneas de arriba hacia abajo
       const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
-      sortedY.forEach(y => {
-        fullText += linesMap[y].join(" ") + "\n";
-      });
+      let pageText = "";
+      sortedY.forEach(y => { pageText += linesMap[y].join(" ") + "\n"; });
+      pagesText.push(pageText);
     }
 
-    return fullText;
+    return pagesText;
   }
 
-  // Lógica principal de Extracción de Datos
   function parseInvoiceText(rawText, fileName) {
-    // Normalización de texto
     const text = rawText.replace(/\r/g, ' ').replace(/[ \t]+/g, ' ');
 
     const result = {
       filename: fileName,
+      docNumber: extractDocNumber(text),
       provider: extractProvider(text),
       neto: 0,
       noGravado: 0,
       iva21: 0,
-      ivaOtros: 0,
+      iva27: 0,
+      iva10: 0,
       iibbCaba: 0,
       iibbPba: 0,
       otrosImp: 0,
       total: 0
     };
 
-    // Helper para extraer importes numéricos según variantes de palabras clave
     function matchAmount(regexList) {
       for (let reg of regexList) {
         const match = text.match(reg);
         if (match && match[1]) {
-          let valStr = match[1].trim()
-            .replace(/\./g, '')  // sacar puntos de miles
-            .replace(',', '.');  // convertir coma a punto decimal
+          let valStr = match[1].trim().replace(/\./g, '').replace(',', '.');
           let val = parseFloat(valStr);
           if (!isNaN(val)) return val;
         }
@@ -280,81 +225,73 @@
       return 0;
     }
 
-    // 1. NETO GRAVADO / SUBTOTAL
+    // 1. NÚMERO DE COMPROBANTE
+    function extractDocNumber(txt) {
+      const match = txt.match(/(?:P\.V\.|Punto\s+de\s+Venta|Comp\.\s*Nro|N°|Número)\s*[:\.\-]?\s*(\d{4,5})[\s\-]+(\d{8})/i);
+      if (match) return `${match[1].padStart(5, '0')}-${match[2]}`;
+      const simpleMatch = txt.match(/(\d{4,5}\-\d{8})/);
+      return simpleMatch ? simpleMatch[1] : 'S/N';
+    }
+
+    // 2. NETO GRAVADO (Evita confundirse con los encabezados de IVA)
     result.neto = matchAmount([
-      /(?:NETO\s+GRAVADO|IMPORTE\s+NETO|SUBTOTAL\s+GRAVADO|SUBTOTAL\s+NETO|SUBTOTAL)\s*[\$:]?\s*([\d\.,]+)/i,
-      /(?:GRAVADO)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:NETO\s+GRAVADO|IMPORTE\s+NETO\s+GRAVADO|SUBTOTAL\s+GRAVADO|SUBTOTAL\s+NETO)\s*[\$:]?\s*([\d\.,]+)/i,
+      /(?:SUBTOTAL)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 2. NO GRAVADO / EXENTO
-    result.noGravado = matchAmount([
-      /(?:CONCEPTOS\s+NO\s+GRAVADOS|NETO\s+NO\s+GRAVADO|NO\s+GRAVADO|OP\.\s*NO\s*GRAVADAS)\s*[\$:]?\s*([\d\.,]+)/i,
-      /(?:IMPORTE\s+EXENTO|EXENTO)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    // 3. IVA 21%
+    // 3. DESGLOSE INDEPENDIENTE DE IVA
     result.iva21 = matchAmount([
-      /(?:IVA\s*21\s*\%|IVA\s*21|ALICUOTA\s*21\s*\%)\s*[\$:]?\s*([\d\.,]+)/i,
-      /(?:DEBITO\s+FISCAL\s+21\%\s*)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:IVA\s*21\s*\%|ALICUOTA\s*21\s*\%|IVA\s*21)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 4. OTROS IVA (10.5%, 27%)
-    result.ivaOtros = matchAmount([
-      /(?:IVA\s*10[\.,]5\s*\%|IVA\s*10\.5|IVA\s*27\s*\%|IVA\s*27)\s*[\$:]?\s*([\d\.,]+)/i
+    result.iva27 = matchAmount([
+      /(?:IVA\s*27\s*\%|ALICUOTA\s*27\s*\%|IVA\s*27)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // Si no diferenció IVA 21 vs otros y dice solo "IVA", se asigna a IVA 21
-    if (result.iva21 === 0 && result.ivaOtros === 0) {
-      result.iva21 = matchAmount([
-        /(?:IVA\s+RESPONSABLE\s+INSCRIPTO|IMPORTE\s+IVA|TOTAL\s+IVA|IVA)\s*[\$:]?\s*([\d\.,]+)/i
-      ]);
-    }
+    result.iva10 = matchAmount([
+      /(?:IVA\s*10[\.,]5\s*\%|ALICUOTA\s*10[\.,]5\s*\%|IVA\s*10\.5)\s*[\$:]?\s*([\d\.,]+)/i
+    ]);
 
-    // 5. PERCEPCIONES / RETENCIONES IIBB CABA (Capital)
+    // 4. NO GRAVADO / EXENTO
+    result.noGravado = matchAmount([
+      /(?:CONCEPTOS\s+NO\s+GRAVADOS|NETO\s+NO\s+GRAVADO|NO\s+GRAVADO|OP\.\s*NO\s*GRAVADAS|EXENTO)\s*[\$:]?\s*([\d\.,]+)/i
+    ]);
+
+    // 5. PERCEPCIONES Y RETENCIONES
     result.iibbCaba = matchAmount([
-      /(?:PERC\.\s*IIBB\s*CABA|PERCEPCION\s+IIBB\s+CAPITAL|IIBB\s+CAPITAL\s+FEDERAL|PERC\.\s*AGIP|AGIP\s+CABA|PERCEPCION\s+CABA)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:PERC\.\s*IIBB\s*CABA|PERCEPCION\s+IIBB\s+CAPITAL|IIBB\s+CAPITAL|PERC\.\s*AGIP|AGIP\s+CABA)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 6. PERCEPCIONES / RETENCIONES IIBB PBA (Buenos Aires / ARBA)
     result.iibbPba = matchAmount([
-      /(?:PERC\.\s*IIBB\s*BS\.?\s*AS\.?|PERCEPCION\s+IIBB\s+BUENOS\s+AIRES|IIBB\s+BS\s+AS|PERC\.\s*ARBA|ARBA\s+PBA|PERCEPCION\s+PBA)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:PERC\.\s*IIBB\s*BS\.?\s*AS\.?|PERCEPCION\s+IIBB\s+BUENOS\s+AIRES|IIBB\s+BS\s+AS|PERC\.\s*ARBA|ARBA)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 7. OTROS IMPUESTOS / PERCEPCIONES NACIONALES O MUNICIPALES
     result.otrosImp = matchAmount([
-      /(?:OTRAS\s+PERCEPCIONES|PERC\.\s*IVA|PERCEPCION\s+IMP\.\s*PAIS|IMPUESTOS\s+INTERNOS|OTROS\s+TRIBUTOS)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:OTRAS\s+PERCEPCIONES|PERC\.\s*IVA|IMPUESTOS\s+INTERNOS|OTROS\s+TRIBUTOS)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
 
-    // 8. TOTAL FACTURA
+    // 6. TOTAL
     result.total = matchAmount([
-      /(?:IMPORTE\s+TOTAL|TOTAL\s+FACTURA|TOTAL\s+COMPROBANTE|TOTAL)\s*[\$:]?\s*([\d\.,]+)/i
+      /(?:IMPORTE\s+TOTAL|TOTAL\s+FACTURA|TOTAL\s+COMPROBANTE)\s*[\$:]?\s*([\d\.,]+)/i,
+      /(?:TOTAL)\s*[\$:]?\s*([\d\.,]+)/i
     ]);
-
-    // Control/fallback: Si el total es 0, intentar sumar componentes
-    const sumaComponentes = result.neto + result.noGravado + result.iva21 + result.ivaOtros + result.iibbCaba + result.iibbPba + result.otrosImp;
-    if (result.total === 0 && sumaComponentes > 0) {
-      result.total = sumaComponentes;
-    }
 
     return result;
   }
 
-  // Extraer Nombre o CUIT del Proveedor
-  function extractProvider(text) {
-    // Buscar CUIT del emisor
-    const cuitMatch = text.match(/(?:CUIT|C\.U\.I\.T\.)\s*[:\-]?\s*(\d{2}[\-]?\d{8}[\-]?\d{1})/i);
-    let cuitStr = cuitMatch ? ` (CUIT: ${cuitMatch[1]})` : '';
+  function extractProvider(txt) {
+    const cuitMatch = txt.match(/(?:CUIT|C\.U\.I\.T\.)\s*[:\-]?\s*(\d{2}[\-]?\d{8}[\-]?\d{1})/i);
+    let cuitStr = cuitMatch ? cuitMatch[1] : 'Sin CUIT';
 
-    // Intentar buscar Razón Social/Nombre cerca del inicio del texto
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
+    const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 3);
+    let name = "Proveedor Desconocido";
     for (let i = 0; i < Math.min(lines.length, 10); i++) {
-      const line = lines[i];
-      if (!/FACTURA|COMPROBANTE|ORIGINAL|DUPLICADO|C\.U\.I\.T|PAGINA/i.test(line)) {
-        return line.substring(0, 30) + cuitStr;
+      if (!/FACTURA|COMPROBANTE|ORIGINAL|DUPLICADO|C\.U\.I\.T|PAGINA|RECIBO/i.test(lines[i])) {
+        name = lines[i].substring(0, 25);
+        break;
       }
     }
-
-    return cuitStr ? `Proveedor ${cuitStr}` : 'Proveedor No Identificado';
+    return `${cuitStr} - ${name}`;
   }
 
   function fmt(val) {
@@ -365,13 +302,14 @@
     resultTable.style.display = 'table';
     tableBody.innerHTML = '';
 
-    let totals = { neto: 0, noGrav: 0, iva21: 0, ivaO: 0, caba: 0, pba: 0, otros: 0, total: 0 };
+    let totals = { neto: 0, noGrav: 0, i21: 0, i27: 0, i10: 0, caba: 0, pba: 0, otros: 0, total: 0 };
 
     parsedResults.forEach(r => {
       totals.neto += r.neto;
       totals.noGrav += r.noGravado;
-      totals.iva21 += r.iva21;
-      totals.ivaO += r.ivaOtros;
+      totals.i21 += r.iva21;
+      totals.i27 += r.iva27;
+      totals.i10 += r.iva10;
       totals.caba += r.iibbCaba;
       totals.pba += r.iibbPba;
       totals.otros += r.otrosImp;
@@ -380,11 +318,13 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${r.filename}</td>
+        <td><b>${r.docNumber}</b></td>
         <td>${r.provider}</td>
         <td>$ ${fmt(r.neto)}</td>
         <td>$ ${fmt(r.noGravado)}</td>
         <td>$ ${fmt(r.iva21)}</td>
-        <td>$ ${fmt(r.ivaOtros)}</td>
+        <td>$ ${fmt(r.iva27)}</td>
+        <td>$ ${fmt(r.iva10)}</td>
         <td>$ ${fmt(r.iibbCaba)}</td>
         <td>$ ${fmt(r.iibbPba)}</td>
         <td>$ ${fmt(r.otrosImp)}</td>
@@ -395,11 +335,12 @@
 
     tableFoot.innerHTML = `
       <tr class="totalrow">
-        <td colspan="2">TOTALES GENERALES</td>
+        <td colspan="3">TOTALES GENERALES</td>
         <td>$ ${fmt(totals.neto)}</td>
         <td>$ ${fmt(totals.noGrav)}</td>
-        <td>$ ${fmt(totals.iva21)}</td>
-        <td>$ ${fmt(totals.ivaO)}</td>
+        <td>$ ${fmt(totals.i21)}</td>
+        <td>$ ${fmt(totals.i27)}</td>
+        <td>$ ${fmt(totals.i10)}</td>
         <td>$ ${fmt(totals.caba)}</td>
         <td>$ ${fmt(totals.pba)}</td>
         <td>$ ${fmt(totals.otros)}</td>
@@ -408,25 +349,26 @@
     `;
   }
 
-  // Exportar a Excel
   btnExport.addEventListener('click', () => {
     const dataForExcel = parsedResults.map(r => ({
       "Archivo": r.filename,
-      "Proveedor": r.provider,
+      "Nro Comprobante": r.docNumber,
+      "Proveedor / CUIT": r.provider,
       "Neto Gravado": r.neto,
       "No Gravado / Exento": r.noGravado,
       "IVA 21%": r.iva21,
-      "IVA Otros": r.ivaOtros,
-      "IIBB CABA / Capital": r.iibbCaba,
-      "IIBB PBA / ARBA": r.iibbPba,
+      "IVA 27%": r.iva27,
+      "IVA 10.5%": r.iva10,
+      "IIBB CABA": r.iibbCaba,
+      "IIBB PBA": r.iibbPba,
       "Otros Impuestos": r.otrosImp,
       "Total Factura": r.total
     }));
 
     const ws = XLSX.utils.json_to_sheet(dataForExcel);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Resumen Facturas");
-    XLSX.writeFile(wb, "Resumen_Facturas_AFIP.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Comprobantes");
+    XLSX.writeFile(wb, "Resumen_Comprobantes.xlsx");
   });
 </script>
 </body>
