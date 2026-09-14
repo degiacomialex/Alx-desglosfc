@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lector de Facturas AFIP</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="preconnect" href="https://googleapis.com">
+<link href="https://googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cloudflare.com"></script>
+<script src="https://cloudflare.com"></script>
 <style>
   :root{--ink:#EAF3F0;--paper:#0B0F0E;--panel:#121815;--panel2:#161D19;--teal:#22C79A;--teal-dark:#0E2420;--line:#233029;--muted:#7C9088;--err:#E07A63;}
   *{box-sizing:border-box;}
@@ -87,7 +87,7 @@
 </div>
 
 <script>
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cloudflare.com';
 
   const dropArea = document.getElementById('dropArea');
   const fileInput = document.getElementById('fileInput');
@@ -164,7 +164,8 @@
     }
 
     renderTable();
-    btnExport.disabled = false;
+    btnExport.disabled = parsedResults.length === 0;
+    btnProcess.disabled = false;
   });
 
   async function extractFullTextFromPDF(file) {
@@ -191,190 +192,46 @@
   }
 
   function parseInvoiceText(rawText, fileName) {
-    const text = rawText.replace(/\r/g, ' ').replace(/[ \t]+/g, ' ');
+    // Normalizar a una única línea para evitar roturas por saltos de página/línea cruzados
+    const text = rawText.replace(/\r?\n/g, ' ').replace(/[ \t]+/g, ' ');
 
-    const result = {
-      filename: fileName,
-      docNumber: extractDocNumber(text),
-      provider: extractProvider(text),
-      neto: 0,
-      noGravado: 0,
-      iva21: 0,
-      iva27: 0,
-      iva10: 0,
-      iibbCaba: 0,
-      iibbPba: 0,
-      otrosImp: 0,
-      total: 0
+    const parseCurrency = (valStr) => {
+      if (!valStr) return 0;
+      valStr = valStr.trim();
+      if (valStr.includes(',') && valStr.includes('.')) {
+        valStr = valStr.replace(/\./g, '').replace(',', '.');
+      } else if (valStr.includes(',')) {
+        valStr = valStr.replace(',', '.');
+      }
+      const num = parseFloat(valStr.replace(/[^0-9.-]/g, ''));
+      return isNaN(num) ? 0 : num;
     };
 
-    function matchAmount(regexList) {
-      for (let reg of regexList) {
-        const match = text.match(reg);
-        if (match && match[1]) {
-          let valStr = match[1].trim().replace(/\./g, '').replace(',', '.');
-          let val = parseFloat(valStr);
-          if (!isNaN(val)) return val;
-        }
-      }
-      return 0;
+    // 1. EXTRAER NÚMERO DE COMPROBANTE
+    let docNumber = "No encontrado";
+    const docRegex = /(?:FACTURA\s+N°|N°|Comp\.\s+Nro:)\s*([0-9]{4,5})[-\s]+([0-9]{5,8})/i;
+    const docMatch = text.match(docRegex);
+    if (docMatch) {
+      docNumber = `${docMatch[1].padStart(5, '0')}-${docMatch[2]}`;
+    } else {
+      const fallbackDoc = text.match(/(?:RECIBO\s+N°|N°)\s*([0-9]{4,5})\s*[-\s]+\s*([0-9]{5,8})/i);
+      if (fallbackDoc) docNumber = `${fallbackDoc[1].padStart(5, '0')}-${fallbackDoc[2]}`;
     }
 
-    // 1. EXTRAER NÚMERO DE FACTURA (Ignora números de Recibos)
-    function extractDocNumber(txt) {
-      // Buscar formato estándar AFIP: Factura A/B/C seguido de punto de venta (5 dígitos) y número (8 dígitos)
-      const fcMatch = txt.match(/(?:FACTURA|COMPROBANTE|COD\.\s*001|COD\.\s*006|COD\.\s*011)[^\d]*(\d{4,5})[\s\-]+(\d{8})/i);
-      if (fcMatch) return `${fcMatch[1].padStart(5, '0')}-${fcMatch[2]}`;
+    // 2. EXTRAER PROVEEDOR / CUIT
+    let provider = "Desconocido";
+    if (/Ayres Internacional/i.test(text)) provider = "Ayres Internacional";
+    else if (/Life Cargo/i.test(text)) provider = "Life Cargo S.R.L.";
+    else if (/Exolgan/i.test(text)) provider = "Exolgan S.A.";
+    else if (/Hapag/i.test(text)) provider = "Hapag-Lloyd Argentina";
+    else if (/TEFASA|FERROVIARIAS/i.test(text)) provider = "TEFASA";
+    else if (/Expeditors/i.test(text)) provider = "Expeditors Argentina";
+    else if (/Intermodal Tank|ITT/i.test(text)) provider = "ITT Argentina";
 
-      const pvMatch = txt.match(/(?:P\.V\.|Punto\s+de\s+Venta)\s*[:\.\-]?\s*(\d{1,5})[^\d]+(?:Comp\.\s*Nro|N°|Número)\s*[:\.\-]?\s*(\d{1,8})/i);
-      if (pvMatch) return `${pvMatch[1].padStart(5, '0')}-${pvMatch[2].padStart(8, '0')}`;
-
-      const genericMatch = txt.match(/(\d{4,5}\-\d{8})/);
-      return genericMatch ? genericMatch[1] : 'S/N';
+    const cuitMatch = text.match(/(?:C\.U\.I\.T\.(?:\.?):?|CUIT:?)\s*([0-9]{2}-[0-9]{8}-[0-9]|[0-9]{11})/i);
+    if (cuitMatch) {
+      provider += ` (${cuitMatch[1]})`;
     }
 
-    // 2. TOTALES
-    result.total = matchAmount([
-      /(?:IMPORTE\s+TOTAL|TOTAL\s+FACTURA|TOTAL\s+COMPROBANTE)\s*[\$:]?\s*([\d\.,]+)/i,
-      /(?:TOTAL)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    // 3. IVAS POR ALÍCUOTA
-    result.iva21 = matchAmount([
-      /(?:IVA\s*21\s*\%|ALICUOTA\s*21\s*\%|21\s*\%\s*IVA|DEBITO\s+FISCAL\s+21\%)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    result.iva27 = matchAmount([
-      /(?:IVA\s*27\s*\%|ALICUOTA\s*27\s*\%|27\s*\%\s*IVA)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    result.iva10 = matchAmount([
-      /(?:IVA\s*10[\.,]5\s*\%|ALICUOTA\s*10[\.,]5\s*\%|10[\.,]5\s*\%\s*IVA)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    // 4. NETO GRAVADO (Busca palabra clave o deduce por cálculo)
-    result.neto = matchAmount([
-      /(?:NETO\s+GRAVADO|IMPORTE\s+NETO\s+GRAVADO|SUBTOTAL\s+GRAVADO|SUBTOTAL\s+NETO)\s*[\$:]?\s*([\d\.,]+)/i,
-      /(?:BASE\s+IMPONIBLE|SUBTOTAL)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    // Fallback Neto Gravado: Si no capturó neto pero hay IVA 21%, calcula la base matemática
-    if (result.neto === 0 && result.iva21 > 0) {
-      result.neto = Math.round((result.iva21 / 0.21) * 100) / 100;
-    }
-
-    // 5. NO GRAVADO Y EXENTO
-    result.noGravado = matchAmount([
-      /(?:CONCEPTOS\s+NO\s+GRAVADOS|NETO\s+NO\s+GRAVADO|NO\s+GRAVADO|OP\.\s*NO\s*GRAVADAS|EXENTO)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    // 6. IIBB Y RETENCIONES
-    result.iibbCaba = matchAmount([
-      /(?:PERC\.\s*IIBB\s*CABA|PERCEPCION\s+IIBB\s+CAPITAL|IIBB\s+CAPITAL|PERC\.\s*AGIP|AGIP\s+CABA)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    result.iibbPba = matchAmount([
-      /(?:PERC\.\s*IIBB\s*BS\.?\s*AS\.?|PERCEPCION\s+IIBB\s+BUENOS\s+AIRES|IIBB\s+BS\s+AS|PERC\.\s*ARBA|ARBA)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    result.otrosImp = matchAmount([
-      /(?:OTRAS\s+PERCEPCIONES|PERC\.\s*IVA|IMPUESTOS\s+INTERNOS|OTROS\s+TRIBUTOS)\s*[\$:]?\s*([\d\.,]+)/i
-    ]);
-
-    return result;
-  }
-
-  function extractProvider(txt) {
-    const cuitMatch = txt.match(/(?:CUIT|C\.U\.I\.T\.)\s*[:\-]?\s*(\d{2}[\-]?\d{8}[\-]?\d{1})/i);
-    let cuitStr = cuitMatch ? cuitMatch[1] : 'Sin CUIT';
-
-    const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-    let name = "Proveedor Desconocido";
-    for (let i = 0; i < Math.min(lines.length, 12); i++) {
-      if (!/FACTURA|COMPROBANTE|ORIGINAL|DUPLICADO|C\.U\.I\.T|PAGINA|RECIBO|HOJA/i.test(lines[i])) {
-        name = lines[i].substring(0, 25);
-        break;
-      }
-    }
-    return `${cuitStr} - ${name}`;
-  }
-
-  function fmt(val) {
-    return val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  function renderTable() {
-    resultTable.style.display = 'table';
-    tableBody.innerHTML = '';
-
-    let totals = { neto: 0, noGrav: 0, i21: 0, i27: 0, i10: 0, caba: 0, pba: 0, otros: 0, total: 0 };
-
-    parsedResults.forEach(r => {
-      totals.neto += r.neto;
-      totals.noGrav += r.noGravado;
-      totals.i21 += r.iva21;
-      totals.i27 += r.iva27;
-      totals.i10 += r.iva10;
-      totals.caba += r.iibbCaba;
-      totals.pba += r.iibbPba;
-      totals.otros += r.otrosImp;
-      totals.total += r.total;
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${r.filename}</td>
-        <td><b>${r.docNumber}</b></td>
-        <td>${r.provider}</td>
-        <td>$ ${fmt(r.neto)}</td>
-        <td>$ ${fmt(r.noGravado)}</td>
-        <td>$ ${fmt(r.iva21)}</td>
-        <td>$ ${fmt(r.iva27)}</td>
-        <td>$ ${fmt(r.iva10)}</td>
-        <td>$ ${fmt(r.iibbCaba)}</td>
-        <td>$ ${fmt(r.iibbPba)}</td>
-        <td>$ ${fmt(r.otrosImp)}</td>
-        <td>$ ${fmt(r.total)}</td>
-      `;
-      tableBody.appendChild(tr);
-    });
-
-    tableFoot.innerHTML = `
-      <tr class="totalrow">
-        <td colspan="3">TOTALES GENERALES</td>
-        <td>$ ${fmt(totals.neto)}</td>
-        <td>$ ${fmt(totals.noGrav)}</td>
-        <td>$ ${fmt(totals.i21)}</td>
-        <td>$ ${fmt(totals.i27)}</td>
-        <td>$ ${fmt(totals.i10)}</td>
-        <td>$ ${fmt(totals.caba)}</td>
-        <td>$ ${fmt(totals.pba)}</td>
-        <td>$ ${fmt(totals.otros)}</td>
-        <td>$ ${fmt(totals.total)}</td>
-      </tr>
-    `;
-  }
-
-  btnExport.addEventListener('click', () => {
-    const dataForExcel = parsedResults.map(r => ({
-      "Archivo": r.filename,
-      "Nro Comprobante": r.docNumber,
-      "Proveedor / CUIT": r.provider,
-      "Neto Gravado": r.neto,
-      "No Gravado / Exento": r.noGravado,
-      "IVA 21%": r.iva21,
-      "IVA 27%": r.iva27,
-      "IVA 10.5%": r.iva10,
-      "IIBB CABA": r.iibbCaba,
-      "IIBB PBA": r.iibbPba,
-      "Otros Impuestos": r.otrosImp,
-      "Total Factura": r.total
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(dataForExcel);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Comprobantes");
-    XLSX.writeFile(wb, "Resumen_Comprobantes.xlsx");
-  });
-</script>
-</body>
-</html>
+    // VARIABLES DE IMPORTES CONTABLES
+  
